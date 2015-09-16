@@ -9,8 +9,10 @@
 //------------------------------------------------------------------------------
 // CONSTANTS
 //------------------------------------------------------------------------------
-#define MOTHERBOARD 1  // Adafruit Motor Shield 1
+//#define MOTHERBOARD 1  // Adafruit Motor Shield 1
 //#define MOTHERBOARD 2  // Adafruit Motor Shield 2
+#define MOTHERBOARD 3  // AccelStepper Driver compatible (easydriver/pololu)
+
 
 // machine style
 #define POLARGRAPH2  // uncomment this line if you use a polargraph like the Makelangelo
@@ -18,7 +20,7 @@
 //#define TRADITIONALXY  // uncomment this line if you use a traditional XY setup.
 
 // Increase this number to see more output
-#define VERBOSE         (0)
+#define VERBOSE         (10)
 
 // Comment out this line to disable SD cards.
 //#define USE_SD_CARD       (1)
@@ -35,9 +37,9 @@
 #define R_PIN           (A5)
 
 // Marginally Clever steppers are 400 steps per turn.
-#define STEPPER_STEPS_PER_TURN    (400.0)
+#define STEPPER_STEPS_PER_TURN    (200.0)
 // We don't use microstepping on the AMS shield.
-#define MICROSTEPPING_MULTIPLIER  (16.0)
+#define MICROSTEPPING_MULTIPLIER  (2.0)
 #define STEPS_PER_TURN            (STEPPER_STEPS_PER_TURN*MICROSTEPPING_MULTIPLIER)
 
 
@@ -97,6 +99,7 @@
 #define M1_ONESTEP(x)  m1.step(1,x)
 #define M2_ONESTEP(x)  m2.step(1,x)
 #endif
+
 #if MOTHERBOARD == 2
 #define M1_STEP(a,b)  m1->step(a,b,MICROSTEP)
 #define M2_STEP(a,b)  m2->step(a,b,MICROSTEP)
@@ -105,6 +108,15 @@
 // stacked motor shields have different addresses. The default is 0x60
 // 0x70 is the "all call" address - every shield will respond as one.
 #define SHIELD_ADDRESS (0x61)
+#endif
+
+#if MOTHERBOARD == 3
+#define M1_STEP  m1_step
+#define M2_STEP  m2_step
+#define M1_ONESTEP(x)  m1_onestep(x)
+#define M2_ONESTEP(x)  m2_onestep(x)
+#define FORWARD 1
+#define BACKWARD -1
 #endif
 
 //------------------------------------------------------------------------------
@@ -129,6 +141,15 @@
 #if MOTHERBOARD == 2
 #include <Wire.h>
 #include <Adafruit_MotorShield.h>
+#endif
+
+#if MOTHERBOARD == 3
+#include <Wire.h>
+
+#include <MultiStepper.h>
+#include <AccelStepper.h>
+
+
 #endif
 
 // Default servo library
@@ -159,6 +180,11 @@ static AF_Stepper m2((int)STEPS_PER_TURN, M1_PIN);
 Adafruit_MotorShield AFMS0 = Adafruit_MotorShield(SHIELD_ADDRESS);
 Adafruit_StepperMotor *m1;
 Adafruit_StepperMotor *m2;
+#endif
+
+#if MOTHERBOARD == 3
+  AccelStepper m1(1,2,3);//initialise accelstepper for a two wire board, pin 5 step, pin 4 dir
+  AccelStepper m2(1,5,6);//initialise accelstepper for a two wire board, pin 5 step, pin 4 dir
 #endif
 
 static Servo s1;
@@ -219,6 +245,30 @@ long line_number;
 //------------------------------------------------------------------------------
 
 
+#if MOTHERBOARD == 3  // Define functions for accelstepper
+
+static void m1_step(int dist, char dir) { // Not sure why dist is used, its always 1.  We'll assume it'll always be one
+  m1.move(dir);
+  m1.run();
+}
+
+static void  m2_step(int dist, char dir) {
+  m1.move(dir);
+  m1.run();  
+}
+
+static void m1_onestep(char dir) {
+  m1.move(dir);
+  m1.run();
+}
+
+static void m2_onestep(char dir) {
+  m2.move(dir);
+  m2.run();
+}
+
+#endif
+
 
 //------------------------------------------------------------------------------
 // calculate max velocity, threadperstep.
@@ -272,7 +322,10 @@ static void setFeedRate(float v) {
   m1->setSpeed(v);
   m2->setSpeed(v);
 #endif
-
+#if MOTHERBOARD == 3
+  m1.setSpeed(v); //TODO: accelstepper expects steps/s, this maybe cm/s ?
+  m2.setSpeed(v);
+#endif
 #if VERBOSE > 1
   Serial.print(F("feed_rate="));  Serial.println(feed_rate);
   Serial.print(F("step_delay="));  Serial.println(step_delay);
@@ -774,10 +827,18 @@ void disable_motors() {
   m1->release();
   m2->release();
 #endif
+#if MOTHERBOARD == 3
+  m1.disableOutputs();
+  m2.disableOutputs();
+#endif
 }
 
 
 void activate_motors() {
+#if MOTHERBOARD == 3
+  m1.disableOutputs();
+  m2.disableOutputs();
+#endif
   M1_STEP(1,1);  M1_STEP(1,-1);
   M2_STEP(1,1);  M2_STEP(1,-1);
 }
@@ -1075,6 +1136,18 @@ void setup() {
   m2 = AFMS0.getStepper(STEPS_PER_TURN, M1_PIN);
 #endif
 
+#if MOTHERBOARD == 3
+  m1.setEnablePin(4);                       //These give compilation errors that these don't exist !
+  m1.setPinsInverted(false, false, true);   //For boards that enable=low
+  m1.setAcceleration(800);                  //set acceleration, even though we only single step
+  m1.setMaxSpeed(800);
+  
+  m2.setEnablePin(7);
+  m2.setPinsInverted(false,false,true);
+  m2.setAcceleration(800); 
+  m2.setMaxSpeed(800);
+#endif
+  
   // initialize the scale
   strcpy(mode_name,"mm");
   mode_scale=0.1;
