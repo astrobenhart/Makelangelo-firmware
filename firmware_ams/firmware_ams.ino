@@ -247,9 +247,13 @@ long line_number;
 
 #if MOTHERBOARD == 3  // Define functions for accelstepper
 
+/*  TODO: Not clear if these need a delay statement to account for the stepper speed ? 
+ *  or can you throw instructions at accelstepper as fast as you like ??
+ *  I believe runToPosition() is blocking
+ */
 static void m1_step(int dist, int dir) { // Not sure why dist is used, its always 1.  We'll assume it'll always be one
   m1.move(dir);
-  m1.run();
+  m1.runToPosition();
   #if VERBOSE > 2
     Serial.print(F("M1 moved in dir "));  Serial.println(dir);
   #endif
@@ -257,7 +261,7 @@ static void m1_step(int dist, int dir) { // Not sure why dist is used, its alway
 
 static void  m2_step(int dist, int dir) {
   m1.move(dir);
-  m1.run(); 
+  m1.runToPosition(); 
   #if VERBOSE > 2
     Serial.print(F("M2 moved in dir "));  Serial.println(dir);
   #endif 
@@ -265,7 +269,7 @@ static void  m2_step(int dist, int dir) {
 
 static void m1_onestep(int dir) {
   m1.move(dir);
-  m1.run();
+  m1.runToPosition();
   #if VERBOSE > 2
     Serial.print(F("M1 stepped in dir "));  Serial.println(dir);
   #endif
