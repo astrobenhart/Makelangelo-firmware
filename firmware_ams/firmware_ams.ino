@@ -115,8 +115,8 @@
 #define M2_STEP  m2_step
 #define M1_ONESTEP(x)  m1_onestep(x)
 #define M2_ONESTEP(x)  m2_onestep(x)
-#define FORWARD 1
-#define BACKWARD -1
+#define FORWARD (1)
+#define BACKWARD (-1)
 #endif
 
 //------------------------------------------------------------------------------
@@ -148,8 +148,6 @@
 
 #include <MultiStepper.h>
 #include <AccelStepper.h>
-
-
 #endif
 
 // Default servo library
@@ -183,8 +181,8 @@ Adafruit_StepperMotor *m2;
 #endif
 
 #if MOTHERBOARD == 3
-  AccelStepper m1(1,2,3);//initialise accelstepper for a two wire board, pin 5 step, pin 4 dir
-  AccelStepper m2(1,5,6);//initialise accelstepper for a two wire board, pin 5 step, pin 4 dir
+  AccelStepper m1(1,2,3);//initialise accelstepper for a two wire board, pin 2 step, pin 3 dir
+  AccelStepper m2(1,5,6);//initialise accelstepper for a two wire board, pin 5 step, pin 6 dir
 #endif
 
 static Servo s1;
@@ -251,35 +249,39 @@ long line_number;
  *  or can you throw instructions at accelstepper as fast as you like ??
  *  I believe runToPosition() is blocking
  */
-static void m1_step(int dist, int dir) { // Not sure why dist is used, its always 1.  We'll assume it'll always be one
-  m1.move(dir);
+static void m1_step(int dist, int dir) { 
+  m1.move(dist*dir);
   m1.runToPosition();
-  #if VERBOSE > 2
+  #if VERBOSE > 5`  11`Q2WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW 
     Serial.print(F("M1 moved in dir "));  Serial.println(dir);
+      Serial.print("M1 "); Serial.println(m1.currentPosition());
   #endif
 }
 
 static void  m2_step(int dist, int dir) {
-  m1.move(dir);
-  m1.runToPosition(); 
-  #if VERBOSE > 2
+  m2.move(dist*dir);
+  m2.runToPosition(); 
+  #if VERBOSE > 5
     Serial.print(F("M2 moved in dir "));  Serial.println(dir);
+      Serial.print("M2 "); Serial.println(m2.currentPosition());
   #endif 
 }
 
 static void m1_onestep(int dir) {
   m1.move(dir);
   m1.runToPosition();
-  #if VERBOSE > 2
+  #if VERBOSE > 5
     Serial.print(F("M1 stepped in dir "));  Serial.println(dir);
+    Serial.print("M1 "); Serial.println(m1.currentPosition());
   #endif
 }
 
 static void m2_onestep(int dir) {
   m2.move(dir);
-  m2.run();
-  #if VERBOSE > 2
+  m2.runToPosition();
+  #if VERBOSE > 5
     Serial.print(F("M2 stepped in dir "));  Serial.println(dir);
+      Serial.print("M2 "); Serial.println(m2.currentPosition());
   #endif
 }
 
@@ -294,7 +296,7 @@ static void adjustSpoolDiameter(float diameter1) {
   THREAD_PER_STEP = SPOOL_CIRC/STEPS_PER_TURN;  // thread per step
 
 #if VERBOSE > 2
-  Serial.print(F("SpoolDiameter = "));  Serial.println(SPOOL_DIAMETER,3);
+     Serial.print(F("SpoolDiameter = "));  Serial.println(SPOOL_DIAMETER,3);
   Serial.print(F("THREAD_PER_STEP="));  Serial.println(THREAD_PER_STEP,3);
 #endif
 }
@@ -660,7 +662,7 @@ static void FindHome() {
 
   // reel in the right motor until contact is made
   Serial.println(F("Find right..."));
-  do {
+  do {STEPS_PER_TURN
     M1_STEP(1,M1_REEL_OUT);
     M2_STEP(1,M2_REEL_IN );
     delay(step_delay);
@@ -850,14 +852,18 @@ void disable_motors() {
 #if MOTHERBOARD == 3
   m1.disableOutputs();
   m2.disableOutputs();
+  m1.move(2);m2.move(2);m1.runToPosition();m2.runToPosition();
+  m1.move(-2);m2.move(-2);m1.runToPosition();m2.runToPosition();
+  Serial.println(F("motors disabled"));
 #endif
 }
 
 
 void activate_motors() {
 #if MOTHERBOARD == 3
-  m1.disableOutputs();
-  m2.disableOutputs();
+  m1.enableOutputs();
+  m2.enableOutputs();
+  Serial.println(F("motors enabled"));
 #endif
   M1_STEP(1,1);  M1_STEP(1,-1);
   M2_STEP(1,1);  M2_STEP(1,-1);
@@ -1157,15 +1163,17 @@ void setup() {
 #endif
 
 #if MOTHERBOARD == 3
-  m1.setEnablePin(4);                       //These give compilation errors that these don't exist !
+  m1.setEnablePin(4);                       
   m1.setPinsInverted(false, false, true);   //For boards that enable=low
   m1.setAcceleration(800);                  //set acceleration, even though we only single step
   m1.setMaxSpeed(800);
+  m1.enableOutputs();
   
   m2.setEnablePin(7);
-  m2.setPinsInverted(false,false,true);
+  m2.setPinsInverted(false, false, true);
   m2.setAcceleration(800); 
   m2.setMaxSpeed(800);
+  m2.enableOutputs();
 #endif
   
   // initialize the scale
