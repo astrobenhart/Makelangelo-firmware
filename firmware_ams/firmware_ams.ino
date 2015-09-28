@@ -20,7 +20,7 @@
 //#define TRADITIONALXY  // uncomment this line if you use a traditional XY setup.
 
 // Increase this number to see more output
-#define VERBOSE         (10)
+#define VERBOSE         (0)
 
 // Comment out this line to disable SD cards.
 //#define USE_SD_CARD       (1)
@@ -252,7 +252,7 @@ long line_number;
 static void m1_step(int dist, int dir) { 
   m1.move(dist*dir);
   m1.runToPosition();
-  #if VERBOSE > 5`  11`Q2WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW 
+  #if VERBOSE > 5 
     Serial.print(F("M1 moved in dir "));  Serial.println(dir);
       Serial.print("M1 "); Serial.println(m1.currentPosition());
   #endif
@@ -296,7 +296,7 @@ static void adjustSpoolDiameter(float diameter1) {
   THREAD_PER_STEP = SPOOL_CIRC/STEPS_PER_TURN;  // thread per step
 
 #if VERBOSE > 2
-     Serial.print(F("SpoolDiameter = "));  Serial.println(SPOOL_DIAMETER,3);
+  Serial.print(F("SpoolDiameter = "));  Serial.println(SPOOL_DIAMETER,3);
   Serial.print(F("THREAD_PER_STEP="));  Serial.println(THREAD_PER_STEP,3);
 #endif
 }
@@ -341,8 +341,8 @@ static void setFeedRate(float v) {
   m2->setSpeed(v);
 #endif
 #if MOTHERBOARD == 3
-  m1.setSpeed(v); //TODO: accelstepper expects steps/s, this maybe cm/s ?
-  m2.setSpeed(v);
+  m1.setSpeed(v * THREAD_PER_STEP); //TODO: accelstepper expects steps/s, this maybe cm/s ?
+  m2.setSpeed(v * THREAD_PER_STEP);
 #endif
 #if VERBOSE > 1
   Serial.print(F("feed_rate="));  Serial.println(feed_rate);
@@ -1165,14 +1165,14 @@ void setup() {
 #if MOTHERBOARD == 3
   m1.setEnablePin(4);                       
   m1.setPinsInverted(false, false, true);   //For boards that enable=low
-  m1.setAcceleration(800);                  //set acceleration, even though we only single step
-  m1.setMaxSpeed(800);
+  m1.setAcceleration(1500);                  //set acceleration, even though we only single step
+  m1.setMaxSpeed(1500);
   m1.enableOutputs();
   
   m2.setEnablePin(7);
   m2.setPinsInverted(false, false, true);
-  m2.setAcceleration(800); 
-  m2.setMaxSpeed(800);
+  m2.setAcceleration(1500); 
+  m2.setMaxSpeed(1500);
   m2.enableOutputs();
 #endif
   
