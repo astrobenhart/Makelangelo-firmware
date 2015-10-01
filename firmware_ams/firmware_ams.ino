@@ -20,7 +20,7 @@
 //#define TRADITIONALXY  // uncomment this line if you use a traditional XY setup.
 
 // Increase this number to see more output
-#define VERBOSE         (0)
+#define VERBOSE         (2)
 
 // Comment out this line to disable SD cards.
 //#define USE_SD_CARD       (1)
@@ -116,7 +116,7 @@
 #define M1_ONESTEP(x)  m1_onestep(x)
 #define M2_ONESTEP(x)  m2_onestep(x)
 #define FORWARD (1)
-#define BACKWARD (-1)
+#define BACKWARD ((-1))
 #endif
 
 //------------------------------------------------------------------------------
@@ -248,40 +248,63 @@ long line_number;
 /*  TODO: Not clear if these need a delay statement to account for the stepper speed ? 
  *  or can you throw instructions at accelstepper as fast as you like ??
  *  I believe runToPosition() is blocking
+ *  I updated this as it ran slow, now it runs weird !
  */
 static void m1_step(int dist, int dir) { 
-  m1.move(dist*dir);
-  m1.runToPosition();
   #if VERBOSE > 5 
-    Serial.print(F("M1 moved in dir "));  Serial.println(dir);
-      Serial.print("M1 "); Serial.println(m1.currentPosition());
+    Serial.print(F("M1 moved in dir "));  Serial.print(dir);Serial.print(F(" result move  "));Serial.print(dist*dir);Serial.print(F(" speed "));Serial.println(feed_rate);
+    //Serial.print("M1 "); Serial.println(m1.currentPosition());
   #endif
+  m1.move((dir*dist));
+  m1.setSpeed(feed_rate);
+  Serial.print("M1 dtg"); Serial.println(m1.distanceToGo());
+  while (m1.distanceToGo() != 0) {
+        m1.runSpeedToPosition();
+        #if VERBOSE > 6
+          Serial.print("M1 dtg"); Serial.println(m1.distanceToGo());
+        #endif 
+      }
+  
 }
 
 static void  m2_step(int dist, int dir) {
-  m2.move(dist*dir);
-  m2.runToPosition(); 
   #if VERBOSE > 5
-    Serial.print(F("M2 moved in dir "));  Serial.println(dir);
-      Serial.print("M2 "); Serial.println(m2.currentPosition());
+    Serial.print(F("M2 moved in dir "));  Serial.print(dir);Serial.print(F(" result move "));Serial.print(dist*dir);Serial.print(F(" speed "));Serial.println(feed_rate);
+    //Serial.print("M2 "); Serial.println(m2.currentPosition());
   #endif 
+  m2.move((dir*dist));
+  m2.setSpeed(feed_rate);
+  Serial.print("M2 dtg"); Serial.println(m2.distanceToGo());
+  while (m2.distanceToGo() != 0) {
+        m2.runSpeedToPosition();
+  #if VERBOSE > 6
+        Serial.print("M2 dtg"); Serial.println(m2.distanceToGo());
+  #endif 
+      }
+  
 }
 
 static void m1_onestep(int dir) {
   m1.move(dir);
-  m1.runToPosition();
-  #if VERBOSE > 5
-    Serial.print(F("M1 stepped in dir "));  Serial.println(dir);
+  m1.setSpeed(feed_rate);
+  while (m1.distanceToGo() != 0) {
+    m1.runSpeedToPosition();
+  }
+  #if VERBOSE > 6
+    Serial.print(F("M1 moved in dir "));  Serial.print(dir);Serial.print(F(" speed "));Serial.println(feed_rate);
     Serial.print("M1 "); Serial.println(m1.currentPosition());
   #endif
 }
 
 static void m2_onestep(int dir) {
   m2.move(dir);
-  m2.runToPosition();
-  #if VERBOSE > 5
-    Serial.print(F("M2 stepped in dir "));  Serial.println(dir);
-      Serial.print("M2 "); Serial.println(m2.currentPosition());
+  m2.setSpeed(feed_rate);
+  while (m2.distanceToGo() != 0) {
+    m2.runSpeedToPosition();
+  }
+  #if VERBOSE > 6
+    Serial.print(F("M1 moved in dir "));  Serial.print(dir);Serial.print(F(" speed "));Serial.println(feed_rate);
+    Serial.print("M2 "); Serial.println(m2.currentPosition());
   #endif
 }
 
