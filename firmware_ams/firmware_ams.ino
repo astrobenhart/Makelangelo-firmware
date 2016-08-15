@@ -19,8 +19,10 @@
 //------------------------------------------------------------------------------
 // CONSTANTS
 //------------------------------------------------------------------------------
-#define MOTHERBOARD 1  // Adafruit Motor Shield 1
+//#define MOTHERBOARD 1  // Adafruit Motor Shield 1
 //#define MOTHERBOARD 2  // Adafruit Motor Shield 2
+#define MOTHERBOARD 3  // AccelStepper Driver compatible (easydriver/pololu)
+
 
 #if MOTHERBOARD == 2
 // stacked motor shields have different addresses. The default is 0x60
@@ -34,7 +36,7 @@
 //#define TRADITIONALXY  // uncomment this line if you use a traditional XY setup.
 
 // Increase this number to see more output
-#define VERBOSE         (0)
+#define VERBOSE         (2)
 
 // Comment out this line to disable SD cards.
 //#define USE_SD_CARD       (1)
@@ -51,9 +53,9 @@
 #define R_PIN           (5)
 
 // Marginally Clever steppers are 400 steps per turn.
-#define STEPPER_STEPS_PER_TURN    (400.0)
+#define STEPPER_STEPS_PER_TURN    (200.0)
 // We don't use microstepping on the AMS shield.
-#define MICROSTEPPING_MULTIPLIER  (16.0)
+#define MICROSTEPPING_MULTIPLIER  (2.0)
 #define STEPS_PER_TURN            (STEPPER_STEPS_PER_TURN*MICROSTEPPING_MULTIPLIER)
 
 
@@ -110,9 +112,19 @@
 #define M1_ONESTEP(x)  m1.onestep(x)//,MICROSTEP)
 #define M2_ONESTEP(x)  m2.onestep(x)//,MICROSTEP)
 #endif
+
 #if MOTHERBOARD == 2
 #define M1_ONESTEP(x)  m1->onestep(x,MICROSTEP)
 #define M2_ONESTEP(x)  m2->onestep(x,MICROSTEP)
+#endif
+
+#if MOTHERBOARD == 3
+#define M1_STEP  m1_step
+#define M2_STEP  m2_step
+#define M1_ONESTEP(x)  m1_onestep(x)
+#define M2_ONESTEP(x)  m2_onestep(x)
+#define FORWARD (1)
+#define BACKWARD ((-1))
 #endif
 
 //------------------------------------------------------------------------------
@@ -147,6 +159,13 @@
 #include "Adafruit_MotorShield/Adafruit_MotorShield.h"
 #endif
 
+#if MOTHERBOARD == 3
+#include <Wire.h>
+
+#include <MultiStepper.h>
+#include <AccelStepper.h>
+#endif
+
 // Default servo library
 #include <Servo.h>
 
@@ -174,6 +193,11 @@ static AF_Stepper m2((int)STEPPER_STEPS_PER_TURN, M1_PIN);
 Adafruit_MotorShield AFMS0 = Adafruit_MotorShield(SHIELD_ADDRESS);
 Adafruit_StepperMotor *m1;
 Adafruit_StepperMotor *m2;
+#endif
+
+#if MOTHERBOARD == 3
+  AccelStepper m1(1,2,3);//initialise accelstepper for a two wire board, pin 2 step, pin 3 dir
+  AccelStepper m2(1,5,6);//initialise accelstepper for a two wire board, pin 5 step, pin 6 dir
 #endif
 
 static Servo s1;
@@ -241,6 +265,73 @@ long line_number;
 //------------------------------------------------------------------------------
 
 
+#if MOTHERBOARD == 3  // Define functions for accelstepper
+
+/*  TODO: Not clear if these need a delay statement to account for the stepper speed ? 
+ *  or can you throw instructions at accelstepper as fast as you like ??
+ *  I believe runToPosition() is blocking
+ *  I updated this as it ran slow, now it runs weird !
+ */
+static void m1_step(int dist, int dir) { 
+  #if VERBOSE > 5 
+    Serial.print(F("M1 moved in dir "));  Serial.print(dir);Serial.print(F(" result move  "));Serial.print(dist*dir);Serial.print(F(" speed "));Serial.println(feed_rate);
+    //Serial.print("M1 "); Serial.println(m1.currentPosition());
+  #endif
+  m1.move((dir*dist));
+  m1.setSpeed(feed_rate);
+  Serial.print("M1 dtg"); Serial.println(m1.distanceToGo());
+  while (m1.distanceToGo() != 0) {
+        m1.runSpeedToPosition();
+        #if VERBOSE > 6
+          Serial.print("M1 dtg"); Serial.println(m1.distanceToGo());
+        #endif 
+      }
+  
+}
+
+static void  m2_step(int dist, int dir) {
+  #if VERBOSE > 5
+    Serial.print(F("M2 moved in dir "));  Serial.print(dir);Serial.print(F(" result move "));Serial.print(dist*dir);Serial.print(F(" speed "));Serial.println(feed_rate);
+    //Serial.print("M2 "); Serial.println(m2.currentPosition());
+  #endif 
+  m2.move((dir*dist));
+  m2.setSpeed(feed_rate);
+  Serial.print("M2 dtg"); Serial.println(m2.distanceToGo());
+  while (m2.distanceToGo() != 0) {
+        m2.runSpeedToPosition();
+  #if VERBOSE > 6
+        Serial.print("M2 dtg"); Serial.println(m2.distanceToGo());
+  #endif 
+      }
+  
+}
+
+static void m1_onestep(int dir) {
+  m1.move(dir);
+  m1.setSpeed(feed_rate);
+  while (m1.distanceToGo() != 0) {
+    m1.runSpeedToPosition();
+  }
+  #if VERBOSE > 6
+    Serial.print(F("M1 moved in dir "));  Serial.print(dir);Serial.print(F(" speed "));Serial.println(feed_rate);
+    Serial.print("M1 "); Serial.println(m1.currentPosition());
+  #endif
+}
+
+static void m2_onestep(int dir) {
+  m2.move(dir);
+  m2.setSpeed(feed_rate);
+  while (m2.distanceToGo() != 0) {
+    m2.runSpeedToPosition();
+  }
+  #if VERBOSE > 6
+    Serial.print(F("M1 moved in dir "));  Serial.print(dir);Serial.print(F(" speed "));Serial.println(feed_rate);
+    Serial.print("M2 "); Serial.println(m2.currentPosition());
+  #endif
+}
+
+#endif
+
 
 //------------------------------------------------------------------------------
 // calculate max velocity, threadperstep.
@@ -294,7 +385,10 @@ void setFeedRate(float v) {
   m1->setSpeed(v);
   m2->setSpeed(v);
 #endif
-
+#if MOTHERBOARD == 3
+  m1.setSpeed(v * THREAD_PER_STEP); //TODO: accelstepper expects steps/s, this maybe cm/s ?
+  m2.setSpeed(v * THREAD_PER_STEP);
+#endif
 #if VERBOSE > 1
   Serial.print(F("feed_rate="));  Serial.println(feed_rate);
   Serial.print(F("step_delay="));  Serial.println(step_delay);
@@ -424,6 +518,10 @@ void line(float x,float y,float z) {
   */
 
   setPenAngle((int)z);
+#if VERBOSE > 5
+  Serial.print("dir1 ");  Serial.println(dir1);
+  Serial.print("dir2 ");  Serial.println(dir2);
+#endif
 
   // bresenham's line algorithm.
   if(ad1>ad2) {
@@ -621,9 +719,9 @@ void findHome() {
 
   // reel in the right motor until contact is made
   Serial.println(F("Find right..."));
-  do {
-    M1_ONESTEP(M1_REEL_OUT);
-    M2_ONESTEP(M2_REEL_IN );
+  do {STEPS_PER_TURN
+    M1_STEP(1,M1_REEL_OUT);
+    M2_STEP(1,M2_REEL_IN );
     delay(step_delay);
     laststep1++;
   } while(!readSwitches());
@@ -885,15 +983,25 @@ void motor_disengage() {
   m1->release();
   m2->release();
 #endif
+#if MOTHERBOARD == 3
+  m1.disableOutputs();
+  m2.disableOutputs();
+  m1.move(2);m2.move(2);m1.runToPosition();m2.runToPosition();
+  m1.move(-2);m2.move(-2);m1.runToPosition();m2.runToPosition();
+  Serial.println(F("motors disabled"));
+#endif
 }
 
 
-/**
- * 
- */
-void motor_engage() {
-  M1_ONESTEP(M1_REEL_IN);  M1_ONESTEP(M1_REEL_OUT);
-  M2_ONESTEP(M2_REEL_IN);  M2_ONESTEP(M2_REEL_OUT);
+
+void activate_motors() {
+#if MOTHERBOARD == 3
+  m1.enableOutputs();
+  m2.enableOutputs();
+  Serial.println(F("motors enabled"));
+#endif
+  M1_STEP(1,1);  M1_STEP(1,-1);
+  M2_STEP(1,1);  M2_STEP(1,-1);
 }
 
 
@@ -1218,6 +1326,20 @@ void setup() {
   m2 = AFMS0.getStepper(STEPPER_STEPS_PER_TURN, M1_PIN);
 #endif
 
+#if MOTHERBOARD == 3
+  m1.setEnablePin(4);                       
+  m1.setPinsInverted(false, false, true);   //For boards that enable=low
+  m1.setAcceleration(1500);                  //set acceleration, even though we only single step
+  m1.setMaxSpeed(1500);
+  m1.enableOutputs();
+  
+  m2.setEnablePin(7);
+  m2.setPinsInverted(false, false, true);
+  m2.setAcceleration(1500); 
+  m2.setMaxSpeed(1500);
+  m2.enableOutputs();
+#endif
+  
   // initialize the scale
   strcpy(mode_name,"mm");
   mode_scale=0.1;
