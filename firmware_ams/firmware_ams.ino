@@ -36,7 +36,7 @@
 //#define TRADITIONALXY  // uncomment this line if you use a traditional XY setup.
 
 // Increase this number to see more output
-#define VERBOSE         (10)
+#define VERBOSE         (4)
 
 // Comment out this line to disable SD cards.
 //#define USE_SD_CARD       (1)
@@ -81,7 +81,7 @@
 // These numbers directly affect the maximum velocity.
 #define MAX_STEPS_S     (STEPS_PER_TURN*MAX_RPM/60.0)  // steps/s
 
-#define MAX_FEEDRATE    (1000.0)
+#define MAX_FEEDRATE    (50000.0)
 #define MIN_FEEDRATE    (1.0) // steps / second
 
 // for arc directions
@@ -196,15 +196,15 @@ Adafruit_StepperMotor *m2;
 #endif
 
 #if MOTHERBOARD == 3
-  //Need to make the pins variables and move to defines
-  AccelStepper m1(1,2,3);//initialise accelstepper for a two wire board, pin 2 step, pin 3 dir
-  AccelStepper m2(1,5,6);//initialise accelstepper for a two wire board, pin 5 step, pin 6 dir
+//Need to make the pins variables and move to defines
+AccelStepper m1(1, 2, 3); //initialise accelstepper for a two wire board, pin 2 step, pin 3 dir
+AccelStepper m2(1, 5, 6); //initialise accelstepper for a two wire board, pin 5 step, pin 6 dir
 #endif
 
 static Servo s1;
 
 // robot UID
-int robot_uid=0;
+int robot_uid = 0;
 
 // plotter limits
 // all distances are relative to the calibration point of the plotter.
@@ -214,12 +214,12 @@ static float limit_bottom = 0;  // Distance to bottom of drawing area.
 static float limit_right = 0;  // Distance to right of drawing area.
 static float limit_left = 0;  // Distance to left of drawing area.
 
-static float homeX=0;
-static float homeY=0;
+static float homeX = 0;
+static float homeY = 0;
 
 // what are the motors called?
-char m1d='L';
-char m2d='R';
+char m1d = 'L';
+char m2d = 'R';
 
 // motor inversions
 char m1i = 1;
@@ -232,32 +232,32 @@ int M2_REEL_IN  = FORWARD;
 int M2_REEL_OUT = BACKWARD;
 
 // calculate some numbers to help us find feed_rate
-float pulleyDiameter = 4.0f/PI;  // cm
-float threadPerStep=0;  // thread per step
+float pulleyDiameter = 4.0f / PI; // cm
+float threadPerStep = 0; // thread per step
 
 // plotter position.
 static float posx;
 static float posy;
 static float posz;  // pen state
-static float feed_rate=0;
+static float feed_rate = 0;
 static long step_delay;
 
 
 // motor position
 static long laststep1, laststep2;
 
-static char absolute_mode=1;  // absolute or incremental programming mode?
+static char absolute_mode = 1; // absolute or incremental programming mode?
 static float mode_scale;   // mm or inches?
 static char mode_name[3];
 
 
 // Serial comm reception
-static char serialBuffer[MAX_BUF+1];  // Serial buffer
+static char serialBuffer[MAX_BUF + 1]; // Serial buffer
 static int sofar;               // Serial buffer progress
 static long last_cmd_time;      // prevent timeouts
 
 Vector3 tool_offset[NUM_TOOLS];
-int current_tool=0;
+int current_tool = 0;
 
 long line_number;
 
@@ -268,67 +268,94 @@ long line_number;
 
 #if MOTHERBOARD == 3  // Define functions for accelstepper
 
-/*  TODO: Not clear if these need a delay statement to account for the stepper speed ? 
- *  or can you throw instructions at accelstepper as fast as you like ??
- *  I believe runToPosition() is blocking
- *  I updated this as it ran slow, now it runs weird !
+/*  TODO: Not clear if these need a delay statement to account for the stepper speed ?
+      or can you throw instructions at accelstepper as fast as you like ??
+      I believe runToPosition() is blocking
+      I updated this as it ran slow, now it runs weird !
  */
-static void m1_step(int dist, int dir) { 
-  #if VERBOSE > 5 
-    Serial.print(F("M1 moved in dir "));  Serial.print(dir);Serial.print(F(" result move  "));Serial.print(dist*dir);Serial.print(F(" speed "));Serial.println(feed_rate);
-    //Serial.print("M1 "); Serial.println(m1.currentPosition());
-  #endif
-  m1.move((dir*dist));
-  m1.setSpeed(feed_rate/60);
-  Serial.print("M1 dtg"); Serial.println(m1.distanceToGo());
-  while (m1.distanceToGo() != 0) { // No idea if this is liable to overshoot ?
-        m1.runSpeedToPosition();
-        #if VERBOSE > 6
-          Serial.print("M1 dtg"); Serial.println(m1.distanceToGo());
-        #endif 
-      }
-  
+static void m1_step(int dist, int dir) {
+#if VERBOSE > 5
+  Serial.print(F("M1 step in dir "));  Serial.print(dir); Serial.print(F(" result move  ")); Serial.print(dist * dir); Serial.print(F(" speed ")); Serial.println(feed_rate);
+
+#endif
+  m1.move((dir * dist));
+  m1.setSpeed(feed_rate / 60);
+  m2.setSpeed(feed_rate / 60);
+  //Serial.print("M1 dtg"); Serial.println(m1.distanceToGo());
+ while (m1.distanceToGo() != 0 || m2.distanceToGo() != 0)
+  {
+    m1.runSpeedToPosition();
+    m2.runSpeedToPosition();
+   }
+#if VERBOSE > 6
+  Serial.print("M1 "); Serial.print(m1.distanceToGo()); Serial.print(" M2 "); Serial.print(m2.distanceToGo());
+#endif
+
 }
 
 static void  m2_step(int dist, int dir) {
-  #if VERBOSE > 5
-    Serial.print(F("M2 moved in dir "));  Serial.print(dir);Serial.print(F(" result move "));Serial.print(dist*dir);Serial.print(F(" speed "));Serial.println(feed_rate);
-    //Serial.print("M2 "); Serial.println(m2.currentPosition());
-  #endif 
-  m2.move((dir*dist));
-  m2.setSpeed(feed_rate/60);
-  Serial.print("M2 dtg"); Serial.println(m2.distanceToGo());
-  while (m2.distanceToGo() != 0) { // No idea if this is liable to overshoot ?
-        m2.runSpeedToPosition();
-  #if VERBOSE > 6
-        Serial.print("M2 dtg"); Serial.println(m2.distanceToGo());
-  #endif 
-      }
-  
+#if VERBOSE > 5
+  Serial.print(F("M2 step in dir "));  Serial.print(dir); Serial.print(F(" result move ")); Serial.print(dist * dir); Serial.print(F(" speed ")); Serial.println(feed_rate);
+
+#endif
+  m2.move((dir * dist));
+  m1.setSpeed(feed_rate / 60);
+  m2.setSpeed(feed_rate / 60);
+  //Serial.print("M2 dtg"); Serial.println(m2.distanceToGo());
+ while (m1.distanceToGo() != 0 || m2.distanceToGo() != 0)
+  {
+    m1.runSpeedToPosition();
+    m2.runSpeedToPosition();
+   }
+#if VERBOSE > 6
+  Serial.print("M1 "); Serial.print(m1.distanceToGo()); Serial.print(" M2 "); Serial.println(m2.distanceToGo());
+#endif
 }
 
 static void m1_onestep(int dir) {
+#if VERBOSE > 5
+  Serial.print(F("M1 onestep in dir "));  Serial.print(dir); Serial.print(F(" speed ")); Serial.println(feed_rate);
+#endif
   m1.move(dir);
-  m1.setSpeed(feed_rate/60);
-  while (m1.distanceToGo() != 0) {
+  m1.setSpeed(feed_rate / 60);
+  m2.setSpeed(feed_rate / 60);
+
+   while (m1.distanceToGo() != 0 || m2.distanceToGo() != 0)
+  {
     m1.runSpeedToPosition();
-  }
-  #if VERBOSE > 6
-    Serial.print(F("M1 moved in dir "));  Serial.print(dir);Serial.print(F(" speed "));Serial.println(feed_rate);
-    Serial.print("M1 "); Serial.println(m1.currentPosition());
-  #endif
+    m2.runSpeedToPosition();
+   }
+
+#if VERBOSE > 9
+  Serial.print(F("M1 onestepped in dir "));  Serial.print(dir); Serial.print(F(" speed ")); Serial.println(feed_rate);
+  Serial.print("M1 Pos "); Serial.print(m1.currentPosition());Serial.print("M2 Pos "); Serial.println(m2.currentPosition());
+  Serial.print("M1 dtg"); Serial.print(m1.distanceToGo()); Serial.print(" M2 dtg"); Serial.println(m2.distanceToGo());
+
+#endif
 }
 
 static void m2_onestep(int dir) {
+#if VERBOSE > 5
+  Serial.print(F("M2 onestep in dir "));  Serial.print(dir); Serial.print(F(" speed ")); Serial.println(feed_rate);
+  Serial.print("M1 "); Serial.print(m1.distanceToGo()); Serial.print(" M2 "); Serial.println(m2.distanceToGo());
+
+#endif
   m2.move(dir);
-  m2.setSpeed(feed_rate/60);
-  while (m2.distanceToGo() != 0) {
+  m1.setSpeed(feed_rate / 60);
+  m2.setSpeed(feed_rate / 60);
+
+   while (m1.distanceToGo() != 0 || m2.distanceToGo() != 0)
+  {
+    m1.runSpeedToPosition();
     m2.runSpeedToPosition();
-  }
-  #if VERBOSE > 6
-    Serial.print(F("M1 moved in dir "));  Serial.print(dir);Serial.print(F(" speed "));Serial.println(feed_rate);
-    Serial.print("M2 "); Serial.println(m2.currentPosition());
-  #endif
+   }
+
+#if VERBOSE > 9
+  Serial.print(F("M2 onestepped in dir "));  Serial.print(dir); Serial.print(F(" speed ")); Serial.println(feed_rate);
+  Serial.print("M1 Pos "); Serial.print(m1.currentPosition());Serial.print("M2 Pos "); Serial.println(m2.currentPosition());
+  Serial.print("M1 dtg"); Serial.print(m1.distanceToGo()); Serial.print(" M2 dtg"); Serial.println(m2.distanceToGo());
+
+#endif
 }
 
 #endif
@@ -338,21 +365,21 @@ static void m2_onestep(int dir) {
 // calculate max velocity, threadperstep.
 void adjustPulleyDiameter(float diameter1) {
   pulleyDiameter = diameter1;
-  float PULLEY_CIRC = pulleyDiameter*PI;  // circumference
-  threadPerStep = PULLEY_CIRC/STEPS_PER_TURN;  // thread per step
+  float PULLEY_CIRC = pulleyDiameter * PI; // circumference
+  threadPerStep = PULLEY_CIRC / STEPS_PER_TURN; // thread per step
 
 #if VERBOSE > 2
-  Serial.print(F("PulleyDiameter = "));  Serial.println(pulleyDiameter,3);
-  Serial.print(F("threadPerStep="));  Serial.println(threadPerStep,3);
+  Serial.print(F("PulleyDiameter = "));  Serial.println(pulleyDiameter, 3);
+  Serial.print(F("threadPerStep="));  Serial.println(threadPerStep, 3);
 #endif
 }
 
 
 //------------------------------------------------------------------------------
 // returns angle of dy/dx as a value from 0...2PI
-float atan3(float dy,float dx) {
-  float a=atan2(dy,dx);
-  if(a<0) a=(PI*2.0)+a;
+float atan3(float dy, float dx) {
+  float a = atan2(dy, dx);
+  if (a < 0) a = (PI * 2.0) + a;
   return a;
 }
 
@@ -370,12 +397,13 @@ char readSwitches() {
 
 //------------------------------------------------------------------------------
 // feed rate is given in units/min and converted to cm/s
+// This appears bollox, feedrate is steps/min
 void setFeedRate(float v) {
-  if(feed_rate==v) return;
-  feed_rate=v;
+  if (feed_rate == v) return;
+  feed_rate = v;
 
-  if(v > MAX_FEEDRATE) v = MAX_FEEDRATE;
-  if(v < MIN_FEEDRATE) v = MIN_FEEDRATE;
+  if (v > MAX_FEEDRATE) v = MAX_FEEDRATE;
+  if (v < MIN_FEEDRATE) v = MIN_FEEDRATE;
 
   step_delay = 1000000.0 / v;
 #if MOTHERBOARD == 1
@@ -387,8 +415,8 @@ void setFeedRate(float v) {
   m2->setSpeed(v);
 #endif
 #if MOTHERBOARD == 3
-  m1.setSpeed(v/60); //TODO: accelstepper expects steps/s, this maybe steps/min ?
-  m2.setSpeed(v/60);
+  m1.setSpeed(v / 60); //TODO: accelstepper expects steps/s, this maybe steps/min ?
+  m2.setSpeed(v / 60);
 #endif
 #if VERBOSE > 1
   Serial.print(F("feed_rate="));  Serial.println(feed_rate);
@@ -407,11 +435,11 @@ void printFeedRate() {
 //------------------------------------------------------------------------------
 // Change pen state.
 void setPenAngle(int pen_angle) {
-  if(posz!=pen_angle) {
-    posz=pen_angle;
+  if (posz != pen_angle) {
+    posz = pen_angle;
 
-    if(posz<PEN_DOWN_ANGLE) posz=PEN_DOWN_ANGLE;
-    if(posz>PEN_UP_ANGLE  ) posz=PEN_UP_ANGLE;
+    if (posz < PEN_DOWN_ANGLE) posz = PEN_DOWN_ANGLE;
+    if (posz > PEN_UP_ANGLE  ) posz = PEN_UP_ANGLE;
 
     s1.write( (int)posz );
     delay(PEN_DELAY);
@@ -423,8 +451,8 @@ void setPenAngle(int pen_angle) {
 // Inverse Kinematics - turns XY coordinates into lengths L1,L2
 void IK(float x, float y, long &l1, long &l2) {
 #ifdef COREXY
-  l1 = lround((x+y) / threadPerStep);
-  l2 = lround((x-y) / threadPerStep);
+  l1 = lround((x + y) / threadPerStep);
+  l2 = lround((x - y) / threadPerStep);
 #endif
 #ifdef TRADITIONALXY
   l1 = lround((x) / threadPerStep);
@@ -434,10 +462,10 @@ void IK(float x, float y, long &l1, long &l2) {
   // find length to M1
   float dy = y - limit_top;
   float dx = x - limit_left;
-  l1 = lround( sqrt(dx*dx+dy*dy) / threadPerStep );
+  l1 = lround( sqrt(dx * dx + dy * dy) / threadPerStep );
   // find length to M2
   dx = limit_right - x;
-  l2 = lround( sqrt(dx*dx+dy*dy) / threadPerStep );
+  l2 = lround( sqrt(dx * dx + dy * dy) / threadPerStep );
 #endif
 }
 
@@ -446,7 +474,7 @@ void IK(float x, float y, long &l1, long &l2) {
 // Forward Kinematics - turns L1,L2 lengths into XY coordinates
 // use law of cosines: theta = acos((a*a+b*b-c*c)/(2*a*b));
 // to find angle between M1M2 and M1P where P is the plotter position.
-void FK(float l1, float l2,float &x,float &y) {
+void FK(float l1, float l2, float &x, float &y) {
 #ifdef COREXY
   l1 *= threadPerStep;
   l2 *= threadPerStep;
@@ -462,7 +490,7 @@ void FK(float l1, float l2,float &x,float &y) {
 #endif
 #ifdef POLARGRAPH2
   float a = (float)l1 * threadPerStep;
-  float b = (limit_right-limit_left);
+  float b = (limit_right - limit_left);
   float c = (float)l2 * threadPerStep;
 
   // slow, uses trig
@@ -474,7 +502,7 @@ void FK(float l1, float l2,float &x,float &y) {
   //y = sin(theta)*l1 + limit_top;
   // and we know that cos(acos(i)) = i
   // and we know that sin(acos(i)) = sqrt(1-i*i)
-  float theta = ((a*a+b*b-c*c)/(2.0*a*b));
+  float theta = ((a * a + b * b - c * c) / (2.0 * a * b));
   x = theta * a + limit_left;
   y = limit_top - (sqrt( 1.0 - theta * theta ) * a);
 #endif
@@ -484,54 +512,61 @@ void FK(float l1, float l2,float &x,float &y) {
 //------------------------------------------------------------------------------
 // pause microseconds
 void pause(long us) {
-  delay(us/1000);
-  delayMicroseconds(us%1000);
+  delay(us / 1000);
+  delayMicroseconds(us % 1000);
 }
 
 
 //------------------------------------------------------------------------------
-void line(float x,float y,float z) {
-  long l1,l2;
-  IK(x,y,l1,l2);
+void line(float x, float y, float z) {
+  long l1, l2;
+  IK(x, y, l1, l2);
   long d1 = l1 - laststep1;
   long d2 = l2 - laststep2;
 
-  long ad1=abs(d1);
-  long ad2=abs(d2);
-  int dir1=d1<0?M1_REEL_IN:M1_REEL_OUT;
-  int dir2=d2<0?M2_REEL_IN:M2_REEL_OUT;
+  long ad1 = abs(d1);
+  long ad2 = abs(d2);
+  int dir1 = d1 < 0 ? M1_REEL_IN : M1_REEL_OUT;
+  int dir2 = d2 < 0 ? M2_REEL_IN : M2_REEL_OUT;
   long over;
   long i;
 
-  long ad = max(ad1,ad2);
+  long ad = max(ad1, ad2);
   /*
-  long d = 1500;
-  long accelerate_until = d - step_delay;
-  long decelerate_after = ad - accelerate_until;
-  if(decelerate_after < accelerate_until ) {
+    long d = 1500;
+    long accelerate_until = d - step_delay;
+    long decelerate_after = ad - accelerate_until;
+    if(decelerate_after < accelerate_until ) {
     decelerate_after = accelerate_until = ad/2;
-  }
-#if VERBOSE > 2
-  Serial.print("s ");  Serial.println(ad);
-  Serial.print("a ");  Serial.println(accelerate_until);
-  Serial.print("d ");  Serial.println(decelerate_after);
-#endif
-  */
+    }
+    #if VERBOSE > 2
+    Serial.print("s ");  Serial.println(ad);
+    Serial.print("a ");  Serial.println(accelerate_until);
+    Serial.print("d ");  Serial.println(decelerate_after);
+    #endif
+   */
 
   setPenAngle((int)z);
 #if VERBOSE > 5
   Serial.print("dir1 ");  Serial.println(dir1);
   Serial.print("dir2 ");  Serial.println(dir2);
 #endif
+#if VERBOSE > 2
+  Serial.print("line x, y:"); Serial.print(x); Serial.print(", "); Serial.println(y);
+  Serial.print("line ad1,ad2"); Serial.print(ad1); Serial.print(", "); Serial.println(ad2);
+#endif
 
   // bresenham's line algorithm.
-  if(ad1>ad2) {
-    over = ad1/2;
-    for(i=0;i<ad1;++i) {
+  if (ad1 > ad2) {
+    over = ad1 / 2;
+    for (i = 0; i < ad1; ++i) {
+#if VERBOSE > 10
+      Serial.print("ad1>ad2, i:"); Serial.print(i); Serial.print(" Over:"); Serial.println(over);
+#endif
       M1_ONESTEP(dir1);
-      over+=ad2;
-      if(over>ad1) {
-        over-=ad1;
+      over += ad2;
+      if (over > ad1) {
+        over -= ad1;
         M2_ONESTEP(dir2);
       }
 
@@ -539,16 +574,19 @@ void line(float x,float y,float z) {
       //if(i>=decelerate_after) d++;
       //pause(d);
 #ifdef USE_LIMIT_SWITCH
-      if(readSwitches()) return;
+      if (readSwitches()) return;
 #endif
     }
   } else {
-    over = ad2/2;
-    for(i=0;i<ad2;++i) {
+    over = ad2 / 2;
+    for (i = 0; i < ad2; ++i) {
+#if VERBOSE > 9
+      Serial.print("else, i:"); Serial.print(i); Serial.print(" Over:"); Serial.println(over);
+#endif
       M2_ONESTEP(dir2);
-      over+=ad1;
-      if(over>ad2) {
-        over-=ad2;
+      over += ad1;
+      if (over > ad2) {
+        over -= ad2;
         M1_ONESTEP(dir1);
       }
 
@@ -556,44 +594,44 @@ void line(float x,float y,float z) {
       //if(i>=decelerate_after) d++;
       //pause(d);
 #ifdef USE_LIMIT_SWITCH
-      if(readSwitches()) return;
+      if (readSwitches()) return;
 #endif
     }
   }
 
-  laststep1=l1;
-  laststep2=l2;
+  laststep1 = l1;
+  laststep2 = l2;
   // I hope this prevents rounding errors.  Small fractions of lines
   // over a long time could lead to lost steps and drawing problems.
-  FK(l1,l2,posx,posy);
-  posz=z;
+  FK(l1, l2, posx, posy);
+  posz = z;
 }
 
 
 //------------------------------------------------------------------------------
-void line_safe(float x,float y,float z) {
+void line_safe(float x, float y, float z) {
   // split up long lines to make them straighter?
-  float dx=x-posx;
-  float dy=y-posy;
-  float dz=z-posz;
+  float dx = x - posx;
+  float dy = y - posy;
+  float dz = z - posz;
 
-  float x0=posx;
-  float y0=posy;
-  float z0=posz;
+  float x0 = posx;
+  float y0 = posy;
+  float z0 = posz;
   float a;
 
-  float len=sqrt(dx*dx+dy*dy);
+  float len = sqrt(dx * dx + dy * dy);
   // too long!
-  long pieces=ceil(len / MM_PER_SEGMENT);
+  long pieces = ceil(len / MM_PER_SEGMENT);
 
-  for(long j=1;j<pieces;++j) {
-    a=(float)j/(float)pieces;
+  for (long j = 1; j < pieces; ++j) {
+    a = (float)j / (float)pieces;
 
-    line(dx*a+x0,
-         dy*a+y0,
-         dz*a+z0);
+    line(dx * a + x0,
+        dy * a + y0,
+        dz * a + z0);
   }
-  line(x,y,z);
+  line(x, y, z);
 }
 
 
@@ -604,22 +642,22 @@ void line_safe(float x,float y,float z) {
 // cx/cy - center of circle
 // x/y - end position
 // dir - ARC_CW or ARC_CCW to control direction of arc
-void arc(float cx,float cy,float x,float y,float z,char clockwise) {
+void arc(float cx, float cy, float x, float y, float z, char clockwise) {
   // get radius
   float dx = posx - cx;
   float dy = posy - cy;
-  float sr=sqrt(dx*dx+dy*dy);
+  float sr = sqrt(dx * dx + dy * dy);
 
   // find angle of arc (sweep)
-  float sa=atan3(dy,dx);
-  float ea=atan3(y-cy,x-cx);
-  float er=sqrt(dx*dx+dy*dy);
-  
-  float da=ea-sa;
-  if(clockwise!=0 && da<0) ea+=2*PI;
-  else if(clockwise==0 && da>0) sa+=2*PI;
-  da=ea-sa;
-  float dr = er-sr;
+  float sa = atan3(dy, dx);
+  float ea = atan3(y - cy, x - cx);
+  float er = sqrt(dx * dx + dy * dy);
+
+  float da = ea - sa;
+  if (clockwise != 0 && da < 0) ea += 2 * PI;
+  else if (clockwise == 0 && da > 0) sa += 2 * PI;
+  da = ea - sa;
+  float dr = er - sr;
 
   // get length of arc
   // float circ=PI*2.0*radius;
@@ -631,19 +669,19 @@ void arc(float cx,float cy,float x,float y,float z,char clockwise) {
   int i, segments = ceil( len / MM_PER_SEGMENT );
 
   float nx, ny, nz, angle3, scale;
-  float a,r;
-  for(i=0;i<=segments;++i) {
+  float a, r;
+  for (i = 0; i <= segments; ++i) {
     // interpolate around the arc
-    scale = ((float)i)/((float)segments);
+    scale = ((float)i) / ((float)segments);
 
     a = ( da * scale ) + sa;
     r = ( dr * scale ) + sr;
-    
+
     nx = cx + cos(a) * r;
     ny = cy + sin(a) * r;
     nz = ( z - posz ) * scale + posz;
     // send it to the planner
-    line(nx,ny,nz);
+    line(nx, ny, nz);
   }
 }
 
@@ -651,20 +689,20 @@ void arc(float cx,float cy,float x,float y,float z,char clockwise) {
 //------------------------------------------------------------------------------
 // instantly move the virtual plotter position
 // does not validate if the move is valid
-void teleport(float x,float y) {
-  posx=x;
-  posy=y;
+void teleport(float x, float y) {
+  posx = x;
+  posy = y;
 
   // @TODO: posz?
-  long L1,L2;
-  IK(posx,posy,L1,L2);
-  laststep1=L1;
-  laststep2=L2;
+  long L1, L2;
+  IK(posx, posy, L1, L2);
+  laststep1 = L1;
+  laststep2 = L2;
 }
 
 
 /**
- * Print a helpful message to serial.  The first line must never be changed to play nice with the JAVA software.
+   Print a helpful message to serial.  The first line must never be changed to play nice with the JAVA software.
  */
 void help() {
   Serial.print(F("\n\nHELLO WORLD! I AM DRAWBOT #"));
@@ -680,9 +718,9 @@ void help() {
 
 void sayVersionNumber() {
   int versionNumber = loadVersion();
-  
+
   Serial.print(F("Firmware v"));
-  Serial.println(versionNumber,DEC);
+  Serial.println(versionNumber, DEC);
 }
 
 
@@ -691,15 +729,15 @@ void findHome() {
 #ifdef USE_LIMIT_SWITCH
   Serial.println(F("Homing..."));
 
-  if(readSwitches()) {
+  if (readSwitches()) {
     Serial.println(F("** ERROR **"));
     Serial.println(F("Problem: Plotter is already touching switches."));
     Serial.println(F("Solution: Please unwind the strings a bit and try again."));
     return;
   }
 
-  int home_step_delay=300;
-  int safe_out=50;
+  int home_step_delay = 300;
+  int safe_out = 50;
 
   // reel in the left motor until contact is made.
   Serial.println(F("Find left..."));
@@ -707,36 +745,37 @@ void findHome() {
     M1_ONESTEP(M1_REEL_IN );
     M2_ONESTEP(M2_REEL_OUT);
     delayMicroseconds(home_step_delay);
-  } while(!readSwitches());
-  laststep1=0;
+  } while (!readSwitches());
+  laststep1 = 0;
 
   // back off so we don't get a false positive on the next motor
   int i;
-  for(i=0;i<safe_out;++i) {
+  for (i = 0; i < safe_out; ++i) {
     M1_ONESTEP(M1_REEL_OUT);
     delayMicroseconds(home_step_delay);
   }
-  laststep1=safe_out;
+  laststep1 = safe_out;
 
   // reel in the right motor until contact is made
   Serial.println(F("Find right..."));
-  do {STEPS_PER_TURN
-    M1_STEP(1,M1_REEL_OUT);
-    M2_STEP(1,M2_REEL_IN );
+  do {
+    STEPS_PER_TURN
+    M1_STEP(1, M1_REEL_OUT);
+    M2_STEP(1, M2_REEL_IN );
     delay(step_delay);
     laststep1++;
-  } while(!readSwitches());
-  laststep2=0;
+  } while (!readSwitches());
+  laststep2 = 0;
 
   // back off so we don't get a false positive that kills line()
-  for(i=0;i<safe_out;++i) {
+  for (i = 0; i < safe_out; ++i) {
     M2_ONESTEP(M2_REEL_OUT);
     delay(step_delay);
   }
-  laststep2=safe_out;
+  laststep2 = safe_out;
 
   Serial.println(F("Centering..."));
-  line(homeX,homeY,posz);
+  line(homeX, homeY, posz);
 #endif // USE_LIMIT_SWITCH
 }
 
@@ -748,7 +787,7 @@ void where() {
   Serial.print(F(" Z"));  Serial.print(posz);
   Serial.print(' ');  printFeedRate();
   Serial.print(F("\n"));
-  
+
   Serial.print(F(" HX="));  Serial.print(homeX);
   Serial.print(F(" HY="));  Serial.println(homeY);
 }
@@ -772,7 +811,7 @@ void printConfig() {
 void EEPROM_writeLong(int ee, long value) {
   byte* p = (byte*)(void*)&value;
   for (int i = 0; i < sizeof(value); i++)
-  EEPROM.write(ee++, *p++);
+    EEPROM.write(ee++, *p++);
 }
 
 
@@ -782,7 +821,7 @@ float EEPROM_readLong(int ee) {
   long value = 0;
   byte* p = (byte*)(void*)&value;
   for (int i = 0; i < sizeof(value); i++)
-  *p++ = EEPROM.read(ee++);
+    *p++ = EEPROM.read(ee++);
   return value;
 }
 
@@ -790,13 +829,13 @@ float EEPROM_readLong(int ee) {
 //------------------------------------------------------------------------------
 void saveUID() {
   Serial.println(F("Saving UID."));
-  EEPROM_writeLong(ADDR_UUID,(long)robot_uid);
+  EEPROM_writeLong(ADDR_UUID, (long)robot_uid);
 }
 
 
 //------------------------------------------------------------------------------
 void savePulleyDiameter() {
-  EEPROM_writeLong(ADDR_PULLEY_DIA1,pulleyDiameter*10000);
+  EEPROM_writeLong(ADDR_PULLEY_DIA1, pulleyDiameter * 10000);
   //EEPROM_writeLong(ADDR_PULLEY_DIA2,pulleyDiameter*10000);
 }
 
@@ -804,73 +843,73 @@ void savePulleyDiameter() {
 //------------------------------------------------------------------------------
 void saveDimensions() {
   Serial.println(F("Saving dimensions."));
-  EEPROM_writeLong(ADDR_LEFT,limit_left*100);
-  EEPROM_writeLong(ADDR_RIGHT,limit_right*100);
-  EEPROM_writeLong(ADDR_TOP,limit_top*100);
-  EEPROM_writeLong(ADDR_BOTTOM,limit_bottom*100);
-  EEPROM_writeLong(ADDR_HOMEX,homeX*100);
-  EEPROM_writeLong(ADDR_HOMEY,homeY*100);
+  EEPROM_writeLong(ADDR_LEFT, limit_left * 100);
+  EEPROM_writeLong(ADDR_RIGHT, limit_right * 100);
+  EEPROM_writeLong(ADDR_TOP, limit_top * 100);
+  EEPROM_writeLong(ADDR_BOTTOM, limit_bottom * 100);
+  EEPROM_writeLong(ADDR_HOMEX, homeX * 100);
+  EEPROM_writeLong(ADDR_HOMEY, homeY * 100);
 }
 
 
 //------------------------------------------------------------------------------
 void loadDimensions() {
-  limit_left   = (float)EEPROM_readLong(ADDR_LEFT)/100.0f;
-  limit_right  = (float)EEPROM_readLong(ADDR_RIGHT)/100.0f;
-  limit_top    = (float)EEPROM_readLong(ADDR_TOP)/100.0f;
-  limit_bottom = (float)EEPROM_readLong(ADDR_BOTTOM)/100.0f;
+  limit_left   = (float)EEPROM_readLong(ADDR_LEFT) / 100.0f;
+  limit_right  = (float)EEPROM_readLong(ADDR_RIGHT) / 100.0f;
+  limit_top    = (float)EEPROM_readLong(ADDR_TOP) / 100.0f;
+  limit_bottom = (float)EEPROM_readLong(ADDR_BOTTOM) / 100.0f;
 }
 
 
 //------------------------------------------------------------------------------
 void saveHome() {
   Serial.println(F("Saving home."));
-  EEPROM_writeLong(ADDR_HOMEX,homeX*100);
-  EEPROM_writeLong(ADDR_HOMEY,homeY*100);
+  EEPROM_writeLong(ADDR_HOMEX, homeX * 100);
+  EEPROM_writeLong(ADDR_HOMEY, homeY * 100);
 }
 
 
 //------------------------------------------------------------------------------
 void loadHome() {
-  homeX = (float)EEPROM_readLong(ADDR_HOMEX)/100.0f;
-  homeY = (float)EEPROM_readLong(ADDR_HOMEY)/100.0f;
+  homeX = (float)EEPROM_readLong(ADDR_HOMEX) / 100.0f;
+  homeY = (float)EEPROM_readLong(ADDR_HOMEY) / 100.0f;
 }
 
 
 //------------------------------------------------------------------------------
 void saveInversions() {
   Serial.println(F("Saving inversions."));
-  EEPROM.write(ADDR_INVL,m1i>0?1:0);
-  EEPROM.write(ADDR_INVR,m2i>0?1:0);
+  EEPROM.write(ADDR_INVL, m1i > 0 ? 1 : 0);
+  EEPROM.write(ADDR_INVR, m2i > 0 ? 1 : 0);
 }
 
 
 //------------------------------------------------------------------------------
 void loadInversions() {
-  m1i = EEPROM.read(ADDR_INVL)>0?1:-1;
-  m2i = EEPROM.read(ADDR_INVR)>0?1:-1;
-  adjustInversions(m1i,m2i);
+  m1i = EEPROM.read(ADDR_INVL) > 0 ? 1 : -1;
+  m2i = EEPROM.read(ADDR_INVR) > 0 ? 1 : -1;
+  adjustInversions(m1i, m2i);
 }
 
 
 //------------------------------------------------------------------------------
-void adjustDimensions(float newT,float newB,float newR,float newL) {
+void adjustDimensions(float newT, float newB, float newR, float newL) {
   // round off
-  newT = floor(newT*100)/100.0f;
-  newB = floor(newB*100)/100.0f;
-  newR = floor(newR*100)/100.0f;
-  newL = floor(newL*100)/100.0f;
+  newT = floor(newT * 100) / 100.0f;
+  newB = floor(newB * 100) / 100.0f;
+  newR = floor(newR * 100) / 100.0f;
+  newL = floor(newL * 100) / 100.0f;
 
-  if( limit_top    != newT ||
+  if ( limit_top    != newT ||
       limit_bottom != newB ||
       limit_right  != newR ||
       limit_left   != newL) {
-        limit_top=newT;
-        limit_bottom=newB;
-        limit_right=newR;
-        limit_left=newL;
-        saveDimensions();
-      }
+    limit_top = newT;
+    limit_bottom = newB;
+    limit_right = newR;
+    limit_left = newL;
+    saveDimensions();
+  }
 }
 
 
@@ -883,15 +922,15 @@ char loadVersion() {
 //------------------------------------------------------------------------------
 void loadConfig() {
   int versionNumber = loadVersion();
-  
-  if( versionNumber != EEPROM_VERSION ) {
+
+  if ( versionNumber != EEPROM_VERSION ) {
     // If not the current EEPROM_VERSION or the EEPROM_VERSION is sullied (i.e. unknown data)
     // Update the version number
-    EEPROM.write(ADDR_VERSION,EEPROM_VERSION);
+    EEPROM.write(ADDR_VERSION, EEPROM_VERSION);
   }
 
   // Retrieve stored configuration
-  robot_uid=EEPROM_readLong(ADDR_UUID);
+  robot_uid = EEPROM_readLong(ADDR_UUID);
   loadDimensions();
   loadPulleyDiameter();
   loadInversions();
@@ -902,47 +941,47 @@ void loadConfig() {
 //------------------------------------------------------------------------------
 void loadPulleyDiameter() {
   //4 decimal places of percision is enough
-  adjustPulleyDiameter((float)EEPROM_readLong(ADDR_PULLEY_DIA1)/10000.0f);
+  adjustPulleyDiameter((float)EEPROM_readLong(ADDR_PULLEY_DIA1) / 10000.0f);
 }
 
 
 #ifdef USE_SD_CARD
 //------------------------------------------------------------------------------
 void SD_PrintDirectory(File dir, int numTabs) {
-   while(true) {
+  while (true) {
 
-     File entry =  dir.openNextFile();
-     if (! entry) {
-       // no more files
-       Serial.println(F("**nomorefiles**"));
-     }
-     for (uint8_t i=0; i<numTabs; i++) {
-       Serial.print('\t');
-     }
-     Serial.print(entry.name());
-     if (entry.isDirectory()) {
-       Serial.println(F("/"));
-       SD_PrintDirectory(entry, numTabs+1);
-     } else {
-       // files have sizes, directories do not
-       Serial.print(F("\t\t"));
-       Serial.println(entry.size(), DEC);
-     }
-   }
+    File entry =  dir.openNextFile();
+    if (! entry) {
+      // no more files
+      Serial.println(F("**nomorefiles**"));
+    }
+    for (uint8_t i = 0; i < numTabs; i++) {
+      Serial.print('\t');
+    }
+    Serial.print(entry.name());
+    if (entry.isDirectory()) {
+      Serial.println(F("/"));
+      SD_PrintDirectory(entry, numTabs + 1);
+    } else {
+      // files have sizes, directories do not
+      Serial.print(F("\t\t"));
+      Serial.println(entry.size(), DEC);
+    }
+  }
 }
 
 
 //------------------------------------------------------------------------------
 void SD_ListFiles() {
   File f = SD.open("/");
-  SD_PrintDirectory(f,0);
+  SD_PrintDirectory(f, 0);
 }
 
 
 //------------------------------------------------------------------------------
 void SD_ProcessFile(char *filename) {
-  File f=SD.open(filename);
-  if(!f) {
+  File f = SD.open(filename);
+  if (!f) {
     Serial.print(F("File "));
     Serial.print(filename);
     Serial.println(F(" not found."));
@@ -950,19 +989,19 @@ void SD_ProcessFile(char *filename) {
   }
 
   int c;
-  while(f.peek() != -1) {
-    c=f.read();
-    if(sofar<MAX_BUF) serialBuffer[sofar++]=c;
-    if(c=='\n') {
+  while (f.peek() != -1) {
+    c = f.read();
+    if (sofar < MAX_BUF) serialBuffer[sofar++] = c;
+    if (c == '\n') {
       // end string
-      serialBuffer[sofar]=0;
+      serialBuffer[sofar] = 0;
 #if VERBOSE > 0
       // print for our benefit
       Serial.println(serialBuffer);
 #endif
       processCommand();
       // reset buffer for next line
-      sofar=0;
+      sofar = 0;
     }
   }
 
@@ -973,7 +1012,7 @@ void SD_ProcessFile(char *filename) {
 
 
 /**
- * 
+
  */
 void motor_disengage() {
 #if MOTHERBOARD == 1
@@ -999,26 +1038,27 @@ void motor_engage() {
 #if MOTHERBOARD == 3
   m1.enableOutputs();
   m2.enableOutputs();
+
   Serial.println(F("motors enabled"));
 #endif
-  M1_STEP(1,1);  M1_STEP(1,-1);
-  M2_STEP(1,1);  M2_STEP(1,-1);
+  M1_STEP(1, 1);  M1_STEP(1, -1);
+  M2_STEP(1, 1);  M2_STEP(1, -1);
 }
 
 
 /**
- * Look for character /code/ in the buffer and read the float that immediately follows it.
- * @return the value found.  If nothing is found, /val/ is returned.
- * @input code the character to look for.
- * @input val the return value if /code/ is not found.
+   Look for character /code/ in the buffer and read the float that immediately follows it.
+   @return the value found.  If nothing is found, /val/ is returned.
+   @input code the character to look for.
+   @input val the return value if /code/ is not found.
  **/
-float parseNumber(char code,float val) {
-  char *ptr=serialBuffer;  // start at the beginning of buffer
-  while(ptr && *ptr && ptr<serialBuffer+sofar) {  // walk to the end
-    if(*ptr==code) {  // if you find code on your walk,
-      return atof(ptr+1);  // convert the digits that follow into a float and return it
+float parseNumber(char code, float val) {
+  char *ptr = serialBuffer; // start at the beginning of buffer
+  while ((long)ptr > 1 && (*ptr) && (long)ptr < (long)serialBuffer + sofar) {
+    if (*ptr == code) { // if you find code on your walk,
+      return atof(ptr + 1); // convert the digits that follow into a float and return it
     }
-    ptr=strchr(ptr,' ')+1;  // take a step from here to the letter after the next space
+    ptr = strchr(ptr, ' ') + 1; // take a step from here to the letter after the next space
   }
   return val;  // end reached, nothing found, return default val.
 }
@@ -1027,88 +1067,90 @@ float parseNumber(char code,float val) {
 
 
 //------------------------------------------------------------------------------
-void set_tool_offset(int axis,float x,float y,float z) {
-  tool_offset[axis].x=x;
-  tool_offset[axis].y=y;
-  tool_offset[axis].z=z;
+void set_tool_offset(int axis, float x, float y, float z) {
+  tool_offset[axis].x = x;
+  tool_offset[axis].y = y;
+  tool_offset[axis].z = z;
 }
 
 
 //------------------------------------------------------------------------------
 Vector3 get_end_plus_offset() {
   return Vector3(tool_offset[current_tool].x + posx,
-                 tool_offset[current_tool].y + posy,
-                 tool_offset[current_tool].z + posz);
+      tool_offset[current_tool].y + posy,
+      tool_offset[current_tool].z + posz);
 }
 
 
 //------------------------------------------------------------------------------
 void tool_change(int tool_id) {
-  if(tool_id < 0) tool_id=0;
-  if(tool_id > NUM_TOOLS) tool_id=NUM_TOOLS;
-  current_tool=tool_id;
+  if (tool_id < 0) tool_id = 0;
+  if (tool_id > NUM_TOOLS) tool_id = NUM_TOOLS;
+  current_tool = tool_id;
 }
 
 
 //------------------------------------------------------------------------------
 void processConfig() {
-  limit_top=parseNumber('T',limit_top);
-  limit_bottom=parseNumber('B',limit_bottom);
-  limit_right=parseNumber('R',limit_right);
-  limit_left=parseNumber('L',limit_left);
+  limit_top = parseNumber('T', limit_top);
+  limit_bottom = parseNumber('B', limit_bottom);
+  limit_right = parseNumber('R', limit_right);
+  limit_left = parseNumber('L', limit_left);
 
-  char gg=parseNumber('G',m1d);
-  char hh=parseNumber('H',m2d);
-  char i=parseNumber('I',0);
-  char j=parseNumber('J',0);
+  char gg = parseNumber('G', m1d);
+  char hh = parseNumber('H', m2d);
+  char i = parseNumber('I', 0);
+  char j = parseNumber('J', 0);
 
-  adjustInversions(i,j);
+  adjustInversions(i, j);
 
   // @TODO: check t>b, r>l ?
   printConfig();
 
-  teleport(0,0);
+  teleport(0, 0);
 }
 
 
-void adjustInversions(int m1,int m2) {
-  if(m1>0) {
+void adjustInversions(int m1, int m2) {
+  if (m1 > 0) {
     M1_REEL_IN  = FORWARD;
     M1_REEL_OUT = BACKWARD;
-  } else if(m1<0) {
+  } else if (m1 < 0) {
     M1_REEL_IN  = BACKWARD;
     M1_REEL_OUT = FORWARD;
   }
 
-  if(m2>0) {
+  if (m2 > 0) {
     M2_REEL_IN  = FORWARD;
     M2_REEL_OUT = BACKWARD;
-  } else if(m2<0) {
+  } else if (m2 < 0) {
     M2_REEL_IN  = BACKWARD;
     M2_REEL_OUT = FORWARD;
   }
 
-  if( m1!=m1i || m2 != m2i) {
-    m1i=m1;
-    m2i=m2;
+  if ( m1 != m1i || m2 != m2i) {
+    m1i = m1;
+    m2i = m2;
     saveInversions();
   }
 }
 
 
 /**
- * process commands in the serial receive buffer
+   process commands in the serial receive buffer
  */
 void processCommand() {
+
+
   // blank lines
-  if(serialBuffer[0]==';') return;
-  
+  if (serialBuffer[0] == ';') return;
+
   long cmd;
 
   // is there a line number?
-  cmd=parseNumber('N',-1);
-  if(cmd!=-1 && serialBuffer[0] == 'N') {  // line number must appear first on the line
-    if( cmd != line_number ) {
+  cmd = parseNumber('N', -1);
+  if (cmd != -1 && serialBuffer[0] == 'N') { // line number must appear first on the line
+    if ( cmd != line_number ) {
       // Wrong line number error
       Serial.print(F("BADLINENUM "));
       Serial.println(line_number);
@@ -1117,14 +1159,14 @@ void processCommand() {
 
 
     // is there a checksum?
-    if(strchr(serialBuffer,'*')!=0) {
+    if (strchr(serialBuffer, '*') != 0) {
       // Yes.  Is it valid?
-      unsigned char checksum=0;
-      int c=0;
-      while(serialBuffer[c]!='*' && c<MAX_BUF) checksum ^= serialBuffer[c++];
+      unsigned char checksum = 0;
+      int c = 0;
+      while (serialBuffer[c] != '*' && c < MAX_BUF) checksum ^= serialBuffer[c++];
       c++; // skip *
-      int against = strtol(serialBuffer+c,NULL,10);
-      if( checksum != against ) {
+      int against = strtol(serialBuffer + c, NULL, 10);
+      if ( checksum != against ) {
         Serial.print(F("BADCHECKSUM "));
         Serial.println(line_number);
         return;
@@ -1138,69 +1180,69 @@ void processCommand() {
     line_number++;
   }
 
-  if(!strncmp(serialBuffer,"UID",3)) {
-    robot_uid=atoi(strchr(serialBuffer,' ')+1);
+  if (!strncmp(serialBuffer, "UID", 3)) {
+    robot_uid = atoi(strchr(serialBuffer, ' ') + 1);
     saveUID();
   }
 
-  cmd=parseNumber('M',-1);
-  switch(cmd) {
+  cmd = parseNumber('M', -1);
+  switch (cmd) {
   case 17:  motor_engage();  break;
   case 18:  motor_disengage();  break;
   case 100:  help();  break;
   case 101:  processConfig();  break;
-  case 110:  line_number = parseNumber('N',line_number);  break;
+  case 110:  line_number = parseNumber('N', line_number);  break;
   case 114:  where();  break;
   }
 
-  cmd=parseNumber('G',-1);
-  switch(cmd) {
+  cmd = parseNumber('G', -1);
+  switch (cmd) {
   case 0:
   case 1: {  // line
-      Vector3 offset=get_end_plus_offset();
-      setFeedRate(parseNumber('F',feed_rate));
-      line_safe( parseNumber('X',(absolute_mode?offset.x:0)*10)*0.1 + (absolute_mode?0:offset.x),
-                 parseNumber('Y',(absolute_mode?offset.y:0)*10)*0.1 + (absolute_mode?0:offset.y),
-                 parseNumber('Z',(absolute_mode?offset.z:0)) + (absolute_mode?0:offset.z) );
-      #if VERBOSE > 5
-        Serial.print(F("Line, F, X, Y, Z = "));  
-        Serial.print(parseNumber('F',0));
-        Serial.print(parseNumber('X',0));
-        Serial.print(parseNumber('Y',0));
-        Serial.println(parseNumber('Z',0));
-      #endif
+    Vector3 offset = get_end_plus_offset();
+    setFeedRate(parseNumber('F', feed_rate));
+    line_safe( parseNumber('X', (absolute_mode ? offset.x : 0) * 10) * 0.1 + (absolute_mode ? 0 : offset.x),
+        parseNumber('Y', (absolute_mode ? offset.y : 0) * 10) * 0.1 + (absolute_mode ? 0 : offset.y),
+        parseNumber('Z', (absolute_mode ? offset.z : 0)) + (absolute_mode ? 0 : offset.z) );
+#if VERBOSE > 5
+    Serial.print(F("Line, F, X, Y, Z = "));
+    Serial.print(parseNumber('F', 0));
+    Serial.print(parseNumber('X', 0));
+    Serial.print(parseNumber('Y', 0));
+    Serial.println(parseNumber('Z', 0));
+#endif
     break;
-    }
+  }
   case 2:
   case 3: {  // arc
-      Vector3 offset=get_end_plus_offset();
-      setFeedRate(parseNumber('F',feed_rate));
-      arc(parseNumber('I',(absolute_mode?offset.x:0)*10)*0.1 + (absolute_mode?0:offset.x),
-          parseNumber('J',(absolute_mode?offset.y:0)*10)*0.1 + (absolute_mode?0:offset.y),
-          parseNumber('X',(absolute_mode?offset.x:0)*10)*0.1 + (absolute_mode?0:offset.x),
-          parseNumber('Y',(absolute_mode?offset.y:0)*10)*0.1 + (absolute_mode?0:offset.y),
-          parseNumber('Z',(absolute_mode?offset.z:0)) + (absolute_mode?0:offset.z),
-          (cmd==2) ? 1 : 0);
-       #if VERBOSE > 5
-        Serial.print(F("Line, F, X, Y, Z = "));  
-        Serial.print(parseNumber('F',0));
-        Serial.print(parseNumber('X',0));
-        Serial.print(parseNumber('Y',0));
-        Serial.println(parseNumber('Z',0));
-      #endif
-      break;
-    }
+    Vector3 offset = get_end_plus_offset();
+    setFeedRate(parseNumber('F', feed_rate));
+    arc(parseNumber('I', (absolute_mode ? offset.x : 0) * 10) * 0.1 + (absolute_mode ? 0 : offset.x),
+        parseNumber('J', (absolute_mode ? offset.y : 0) * 10) * 0.1 + (absolute_mode ? 0 : offset.y),
+        parseNumber('X', (absolute_mode ? offset.x : 0) * 10) * 0.1 + (absolute_mode ? 0 : offset.x),
+        parseNumber('Y', (absolute_mode ? offset.y : 0) * 10) * 0.1 + (absolute_mode ? 0 : offset.y),
+        parseNumber('Z', (absolute_mode ? offset.z : 0)) + (absolute_mode ? 0 : offset.z),
+        (cmd == 2) ? 1 : 0);
+#if VERBOSE > 5
+    Serial.print(F("Line, F, X, Y, Z = "));
+    Serial.print(parseNumber('F', 0));
+    Serial.print(parseNumber('X', 0));
+    Serial.print(parseNumber('Y', 0));
+    Serial.println(parseNumber('Z', 0));
+#endif
+    break;
+  }
   case 4:  // dwell
-    pause(parseNumber('S',0) + parseNumber('P',0)*1000.0f);
+    pause(parseNumber('S', 0) + parseNumber('P', 0) * 1000.0f);
     break;
   case 20: // inches -> cm
-    mode_scale=2.54f;  // inches -> cm
-    strcpy(mode_name,"in");
+    mode_scale = 2.54f; // inches -> cm
+    strcpy(mode_name, "in");
     printFeedRate();
     break;
   case 21:
-    mode_scale=0.1;  // mm -> cm
-    strcpy(mode_name,"mm");
+    mode_scale = 0.1; // mm -> cm
+    strcpy(mode_name, "mm");
     printFeedRate();
     break;
   case 28:  findHome();  break;
@@ -1210,88 +1252,92 @@ void processCommand() {
   case 57:
   case 58:
   case 59: {  // 54-59 tool offsets
-    int tool_id=cmd-54;
-    set_tool_offset(tool_id,parseNumber('X',tool_offset[tool_id].x),
-                            parseNumber('Y',tool_offset[tool_id].y),
-                            parseNumber('Z',tool_offset[tool_id].z));
+    int tool_id = cmd - 54;
+    set_tool_offset(tool_id, parseNumber('X', tool_offset[tool_id].x),
+        parseNumber('Y', tool_offset[tool_id].y),
+        parseNumber('Z', tool_offset[tool_id].z));
     break;
-    }
-  case 90:  absolute_mode=1;  break;  // absolute mode
-  case 91:  absolute_mode=0;  break;  // relative mode
+  }
+  case 90:  absolute_mode = 1;  break; // absolute mode
+  case 91:  absolute_mode = 0;  break; // relative mode
   case 92: {  // set position (teleport)
-      Vector3 offset = get_end_plus_offset();
-      teleport( parseNumber('X',(absolute_mode?offset.x:0)*10)*0.1 + (absolute_mode?0:offset.x),
-                parseNumber('Y',(absolute_mode?offset.y:0)*10)*0.1 + (absolute_mode?0:offset.y)//,
-              //parseNumber('Z',(absolute_mode?offset.z:0)) + (absolute_mode?0:offset.z)
-              );
-      break;
-    }
+    Vector3 offset = get_end_plus_offset();
+    teleport( parseNumber('X', (absolute_mode ? offset.x : 0) * 10) * 0.1 + (absolute_mode ? 0 : offset.x),
+        parseNumber('Y', (absolute_mode ? offset.y : 0) * 10) * 0.1 + (absolute_mode ? 0 : offset.y) //,
+        //parseNumber('Z',(absolute_mode?offset.z:0)) + (absolute_mode?0:offset.z)
+    );
+    break;
+  }
   }
 
-  cmd=parseNumber('D',-1);
-  switch(cmd) {
+  cmd = parseNumber('D', -1);
+  switch (cmd) {
   case 0: {
-      // jog one motor
-      char *ptr=strchr(serialBuffer,' ')+1;
-      int amount = atoi(ptr+1);
-      int i, dir;
-      if(*ptr == m1d) {
-        dir = amount < 0 ? M1_REEL_IN : M1_REEL_OUT;
-        amount=abs(amount);
+    // jog one motor
+    char *ptr = strchr(serialBuffer, ' ') + 1;
+    int amount = atoi(ptr + 1);
+    int i, dir;
+    if (*ptr == m1d) {
+      dir = amount < 0 ? M1_REEL_IN : M1_REEL_OUT;
+      amount = abs(amount);
 #if VERBOSE > 1
-        Serial.print(F("M1 "));
-        Serial.print(amount);
-        Serial.print(' ');
-        Serial.println(dir);
+      Serial.print(F("M1 "));
+      Serial.print(amount);
+      Serial.print(' ');
+      Serial.println(dir);
 #endif
-        for(i=0;i<amount;++i) {  M1_ONESTEP(dir);  }
-      } else if(*ptr == m2d) {
-        dir = amount < 0 ? M2_REEL_IN : M2_REEL_OUT;
-        amount = abs(amount);
+      for (i = 0; i < amount; ++i) {
+        M1_ONESTEP(dir);
+      }
+    } else if (*ptr == m2d) {
+      dir = amount < 0 ? M2_REEL_IN : M2_REEL_OUT;
+      amount = abs(amount);
 #if VERBOSE > 1
-        Serial.print(F("M2 "));
-        Serial.print(amount);
-        Serial.print(' ');
-        Serial.println(dir);
+      Serial.print(F("M2 "));
+      Serial.print(amount);
+      Serial.print(' ');
+      Serial.println(dir);
 #endif
-        for(i=0;i<amount;++i) {  M2_ONESTEP(dir);  }
+      for (i = 0; i < amount; ++i) {
+        M2_ONESTEP(dir);
       }
     }
-    break;
+  }
+  break;
   case 1: {
-      // adjust spool diameters
-      float amountL=parseNumber('L',pulleyDiameter);
-      float amountR=parseNumber('R',pulleyDiameter);
+    // adjust spool diameters
+    float amountL = parseNumber('L', pulleyDiameter);
+    float amountR = parseNumber('R', pulleyDiameter);
 
-      float tps1=threadPerStep;
-      adjustPulleyDiameter(amountL);
-      if(threadPerStep != tps1) {
-        // Update EEPROM
-        savePulleyDiameter();
-      }
+    float tps1 = threadPerStep;
+    adjustPulleyDiameter(amountL);
+    if (threadPerStep != tps1) {
+      // Update EEPROM
+      savePulleyDiameter();
     }
-    break;
+  }
+  break;
   case 2:
     Serial.print('L');  Serial.print(pulleyDiameter);
     Serial.print(F(" R"));   Serial.println(pulleyDiameter);
     break;
 #ifdef USE_SD_CARD
   case 3:  SD_ListFiles();  break;    // read directory
-  case 4:  SD_ProcessFile(strchr(serialBuffer,' ')+1);  break;  // read file
+  case 4:  SD_ProcessFile(strchr(serialBuffer, ' ') + 1);  break; // read file
 #endif
   case 5:
     sayVersionNumber();
     break;
   case 6:  // set home
-    setHome(parseNumber('X',(absolute_mode?homeX:0)*10)*0.1 + (absolute_mode?0:homeX),
-            parseNumber('Y',(absolute_mode?homeY:0)*10)*0.1 + (absolute_mode?0:homeY));
+    setHome(parseNumber('X', (absolute_mode ? homeX : 0) * 10) * 0.1 + (absolute_mode ? 0 : homeX),
+        parseNumber('Y', (absolute_mode ? homeY : 0) * 10) * 0.1 + (absolute_mode ? 0 : homeY));
     break;
   }
 }
 
 
-void setHome(float x,float y) {
-  if(x != homeX || y!=homeY) {
+void setHome(float x, float y) {
+  if (x != homeX || y != homeY) {
     homeX = x;
     homeY = y;
     saveHome();
@@ -1301,10 +1347,10 @@ void setHome(float x,float y) {
 
 //------------------------------------------------------------------------------
 /**
- * prepares the input buffer to receive a new message and tells the serial connected device it is ready for more.
+   prepares the input buffer to receive a new message and tells the serial connected device it is ready for more.
  */
 void ready() {
-  sofar=0;  // clear input buffer
+  sofar = 0; // clear input buffer
   Serial.println(F("> "));  // signal ready to receive input
   last_cmd_time = millis();
 }
@@ -1312,8 +1358,8 @@ void ready() {
 
 //------------------------------------------------------------------------------
 void tools_setup() {
-  for(int i=0;i<NUM_TOOLS;++i) {
-    set_tool_offset(i,0,0,0);
+  for (int i = 0; i < NUM_TOOLS; ++i) {
+    set_tool_offset(i, 0, 0, 0);
   }
 }
 
@@ -1323,7 +1369,7 @@ void setup() {
   loadConfig();
 
   // initialize the read buffer
-  sofar=0;
+  sofar = 0;
   // start communications
   Serial.begin(BAUD);
   Serial.print(F("\n\nHELLO WORLD! I AM DRAWBOT #"));
@@ -1342,22 +1388,24 @@ void setup() {
 #endif
 
 #if MOTHERBOARD == 3
-  m1.setEnablePin(4);                       
+  m1.setEnablePin(4);
   m1.setPinsInverted(false, false, true);   //For boards that enable=low
   m1.setAcceleration(750);                  //set acceleration, even though we only single step
-  m1.setMaxSpeed(MAX_FEEDRATE/60);
+  m1.setMaxSpeed(MAX_FEEDRATE / 60);
   m1.enableOutputs();
-  
+  m1.setCurrentPosition(0);
+
   m2.setEnablePin(7);
   m2.setPinsInverted(false, false, true);
-  m2.setAcceleration(750); 
-  m2.setMaxSpeed(MAX_FEEDRATE/60);
+  m2.setAcceleration(750);
+  m2.setMaxSpeed(MAX_FEEDRATE / 60);
   m2.enableOutputs();
+  m2.setCurrentPosition(0);
 #endif
-  
+
   // initialize the scale
-  strcpy(mode_name,"mm");
-  mode_scale=0.1;
+  strcpy(mode_name, "mm");
+  mode_scale = 0.1;
 
 #if MOTHERBOARD == 2
   // Change the i2c clock from 100KHz to 400KHz
@@ -1371,13 +1419,13 @@ void setup() {
   s1.attach(SERVO_PIN);
 
   // turn on the pull up resistor
-  digitalWrite(L_PIN,HIGH);
-  digitalWrite(R_PIN,HIGH);
+  digitalWrite(L_PIN, HIGH);
+  digitalWrite(R_PIN, HIGH);
 
   tools_setup();
 
   // initialize the plotter position.
-  teleport(homeX,homeY);
+  teleport(homeX, homeY);
   setPenAngle(PEN_UP_ANGLE);
 
   // display the help at startup.
@@ -1394,15 +1442,15 @@ void testKinematics() {
   limit_right = 500;
   limit_left = -500;
 
-  float a,b,e,f;
-  long c,d;
-  for(int i=0;i<1000;++i) {
-    a = random(-500,500);
-    b = random(-500,500);
-    IK(a,b,c,d);
-    FK(c,d,e,f);
+  float a, b, e, f;
+  long c, d;
+  for (int i = 0; i < 1000; ++i) {
+    a = random(-500, 500);
+    b = random(-500, 500);
+    IK(a, b, c, d);
+    FK(c, d, e, f);
 
-    if(abs(a-e)>0.1f || abs(b-f)>0.1f) {
+    if (abs(a - e) > 0.1f || abs(b - f) > 0.1f) {
       Serial.print(a);  Serial.print("\t");
       Serial.print(b);  Serial.print("\t");
       Serial.print(c);  Serial.print("\t");
@@ -1418,11 +1466,11 @@ void testKinematics() {
 // See: http://www.marginallyclever.com/2011/10/controlling-your-arduino-through-the-serial-monitor/
 void Serial_listen() {
   // listen for serial commands
-  while(Serial.available() > 0) {
+  while (Serial.available() > 0) {
     char c = Serial.read();
-    if(sofar<MAX_BUF) serialBuffer[sofar++]=c;
-    if(c=='\n') {
-      serialBuffer[sofar]=0;
+    if (sofar < MAX_BUF) serialBuffer[sofar++] = c;
+    if (c == '\n') {
+      serialBuffer[sofar] = 0;
 
 #if VERBOSE > 0
       // echo confirmation
@@ -1445,25 +1493,25 @@ void loop() {
   // The PC will wait forever for the ready signal.
   // if Arduino hasn't received a new instruction in a while, send ready() again
   // just in case USB garbled ready and each half is waiting on the other.
-  if( (millis() - last_cmd_time) > TIMEOUT_OK ) {
+  if ( (millis() - last_cmd_time) > TIMEOUT_OK ) {
     ready();
   }
 }
 
 
 /**
- * This file is part of makelangelo-firmware.
- *
- * makelangelo-firmware is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * makelangelo-firmware is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
+   This file is part of makelangelo-firmware.
+
+   makelangelo-firmware is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   makelangelo-firmware is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
  */
